@@ -124,6 +124,11 @@ public class ServerRequestWrapper implements ServerRequest {
 	}
 
 	@Override
+	public Optional<InetSocketAddress> localAddress() {
+		return this.delegate.localAddress();
+	}
+
+	@Override
 	public List<HttpMessageReader<?>> messageReaders() {
 		return this.delegate.messageReaders();
 	}
@@ -206,11 +211,6 @@ public class ServerRequestWrapper implements ServerRequest {
 	@Override
 	public Mono<MultiValueMap<String, Part>> multipartData() {
 		return this.delegate.multipartData();
-	}
-
-	@Override
-	public Flux<Part> parts() {
-		return this.delegate.parts();
 	}
 
 	@Override

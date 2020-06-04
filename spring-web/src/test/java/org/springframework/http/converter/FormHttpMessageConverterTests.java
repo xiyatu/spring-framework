@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2019 the original author or authors.
+ * Copyright 2002-2020 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+
 import javax.xml.transform.Source;
 import javax.xml.transform.stream.StreamSource;
 
@@ -31,7 +32,7 @@ import org.apache.commons.fileupload.FileItemFactory;
 import org.apache.commons.fileupload.FileUpload;
 import org.apache.commons.fileupload.RequestContext;
 import org.apache.commons.fileupload.disk.DiskFileItemFactory;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
@@ -47,6 +48,10 @@ import org.springframework.util.MultiValueMap;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED;
+import static org.springframework.http.MediaType.MULTIPART_FORM_DATA;
+import static org.springframework.http.MediaType.MULTIPART_MIXED;
+import static org.springframework.http.MediaType.TEXT_XML;
 
 /**
  * Unit tests for {@link FormHttpMessageConverter} and
@@ -58,57 +63,59 @@ import static org.mockito.Mockito.verify;
  */
 public class FormHttpMessageConverterTests {
 
-	protected static final MediaType MULTIPART_MIXED = new MediaType("multipart", "mixed");
-	protected static final MediaType MULTIPART_RELATED = new MediaType("multipart", "related");
+	private static final MediaType MULTIPART_RELATED = new MediaType("multipart", "related");
 
 	private final FormHttpMessageConverter converter = new AllEncompassingFormHttpMessageConverter();
 
 
 	@Test
 	public void canRead() {
-		assertThat(this.converter.canRead(MultiValueMap.class, MediaType.APPLICATION_FORM_URLENCODED)).isTrue();
-		assertThat(this.converter.canRead(MultiValueMap.class, MediaType.MULTIPART_FORM_DATA)).isFalse();
+		assertCanRead(MultiValueMap.class, null);
+		assertCanRead(APPLICATION_FORM_URLENCODED);
+
+		assertCannotRead(String.class, null);
+		assertCannotRead(String.class, APPLICATION_FORM_URLENCODED);
+	}
+
+	@Test
+	public void cannotReadMultipart() {
+		// Without custom multipart types supported
+		asssertCannotReadMultipart();
+
+		this.converter.addSupportedMediaTypes(MULTIPART_RELATED);
+
+		// Should still be the case with custom multipart types supported
+		asssertCannotReadMultipart();
 	}
 
 	@Test
 	public void canWrite() {
-		assertCanWrite(MediaType.APPLICATION_FORM_URLENCODED);
-		assertCanWrite(MediaType.MULTIPART_FORM_DATA);
+		assertCanWrite(APPLICATION_FORM_URLENCODED);
+		assertCanWrite(MULTIPART_FORM_DATA);
+		assertCanWrite(MULTIPART_MIXED);
 		assertCanWrite(new MediaType("multipart", "form-data", StandardCharsets.UTF_8));
 		assertCanWrite(MediaType.ALL);
+		assertCanWrite(null);
 	}
 
 	@Test
 	public void setSupportedMediaTypes() {
-		assertCannotWrite(MULTIPART_MIXED);
 		assertCannotWrite(MULTIPART_RELATED);
 
 		List<MediaType> supportedMediaTypes = new ArrayList<>(this.converter.getSupportedMediaTypes());
-		supportedMediaTypes.add(MULTIPART_MIXED);
 		supportedMediaTypes.add(MULTIPART_RELATED);
 		this.converter.setSupportedMediaTypes(supportedMediaTypes);
 
-		assertCanWrite(MULTIPART_MIXED);
 		assertCanWrite(MULTIPART_RELATED);
 	}
 
 	@Test
 	public void addSupportedMediaTypes() {
-		assertCannotWrite(MULTIPART_MIXED);
 		assertCannotWrite(MULTIPART_RELATED);
 
-		this.converter.addSupportedMediaTypes(MULTIPART_MIXED, MULTIPART_RELATED);
+		this.converter.addSupportedMediaTypes(MULTIPART_RELATED);
 
-		assertCanWrite(MULTIPART_MIXED);
 		assertCanWrite(MULTIPART_RELATED);
-	}
-
-	private void assertCanWrite(MediaType mediaType) {
-		assertThat(this.converter.canWrite(MultiValueMap.class, mediaType)).isTrue();
-	}
-
-	private void assertCannotWrite(MediaType mediaType) {
-		assertThat(this.converter.canWrite(MultiValueMap.class, mediaType)).isFalse();
 	}
 
 	@Test
@@ -136,7 +143,7 @@ public class FormHttpMessageConverterTests {
 		body.add("name 2", "value 2+2");
 		body.add("name 3", null);
 		MockHttpOutputMessage outputMessage = new MockHttpOutputMessage();
-		this.converter.write(body, MediaType.APPLICATION_FORM_URLENCODED, outputMessage);
+		this.converter.write(body, APPLICATION_FORM_URLENCODED, outputMessage);
 
 		assertThat(outputMessage.getBodyAsString(StandardCharsets.UTF_8)).as("Invalid result").isEqualTo("name+1=value+1&name+2=value+2%2B1&name+2=value+2%2B2&name+3");
 		assertThat(outputMessage.getHeaders().getContentType().toString()).as("Invalid content-type").isEqualTo("application/x-www-form-urlencoded;charset=UTF-8");
@@ -165,7 +172,7 @@ public class FormHttpMessageConverterTests {
 
 		Source xml = new StreamSource(new StringReader("<root><child/></root>"));
 		HttpHeaders entityHeaders = new HttpHeaders();
-		entityHeaders.setContentType(MediaType.TEXT_XML);
+		entityHeaders.setContentType(TEXT_XML);
 		HttpEntity<Source> entity = new HttpEntity<>(xml, entityHeaders);
 		parts.add("xml", entity);
 
@@ -226,7 +233,7 @@ public class FormHttpMessageConverterTests {
 		parts.add("part1", myBean);
 
 		HttpHeaders entityHeaders = new HttpHeaders();
-		entityHeaders.setContentType(MediaType.TEXT_XML);
+		entityHeaders.setContentType(TEXT_XML);
 		HttpEntity<MyBean> entity = new HttpEntity<>(myBean, entityHeaders);
 		parts.add("part2", entity);
 
@@ -259,6 +266,39 @@ public class FormHttpMessageConverterTests {
 		assertThat(item.getString())
 				.startsWith("<MyBean")
 				.endsWith("><string>foo</string></MyBean>");
+	}
+
+	private void assertCanRead(MediaType mediaType) {
+		assertCanRead(MultiValueMap.class, mediaType);
+	}
+
+	private void assertCanRead(Class<?> clazz, MediaType mediaType) {
+		assertThat(this.converter.canRead(clazz, mediaType)).as(clazz.getSimpleName() + " : " + mediaType).isTrue();
+	}
+
+	private void asssertCannotReadMultipart() {
+		assertCannotRead(new MediaType("multipart", "*"));
+		assertCannotRead(MULTIPART_FORM_DATA);
+		assertCannotRead(MULTIPART_MIXED);
+		assertCannotRead(MULTIPART_RELATED);
+	}
+
+	private void assertCannotRead(MediaType mediaType) {
+		assertCannotRead(MultiValueMap.class, mediaType);
+	}
+
+	private void assertCannotRead(Class<?> clazz, MediaType mediaType) {
+		assertThat(this.converter.canRead(clazz, mediaType)).as(clazz.getSimpleName() + " : " + mediaType).isFalse();
+	}
+
+	private void assertCanWrite(MediaType mediaType) {
+		Class<?> clazz = MultiValueMap.class;
+		assertThat(this.converter.canWrite(clazz, mediaType)).as(clazz.getSimpleName() + " : " + mediaType).isTrue();
+	}
+
+	private void assertCannotWrite(MediaType mediaType) {
+		Class<?> clazz = MultiValueMap.class;
+		assertThat(this.converter.canWrite(clazz, mediaType)).as(clazz.getSimpleName() + " : " + mediaType).isFalse();
 	}
 
 
